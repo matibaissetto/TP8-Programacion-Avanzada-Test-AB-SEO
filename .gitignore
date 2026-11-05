@@ -8,3 +8,6 @@ node_modules
 .next/
 .env*.local
 .DS_Store
+# Base local del experimento (persistencia runtime, no se commitea)
+data/
+next-env.d.ts

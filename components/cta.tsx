@@ -3,8 +3,8 @@
 import { useState, useTransition } from 'react'
 import { recordConversion } from '@/app/practica/actions'
 
-export function Cta({ label }: { label: string }) {
-  const [tried, setTried] = useState(false)
+export function Cta({ label, preview = false }: { label: string; preview?: boolean }) {
+  const [done, setDone] = useState(false)
   const [pending, startTransition] = useTransition()
 
   return (
@@ -14,8 +14,8 @@ export function Cta({ label }: { label: string }) {
         disabled={pending}
         onClick={() => {
           startTransition(async () => {
-            await recordConversion()
-            setTried(true)
+            const result = await recordConversion(preview)
+            setDone((previous) => previous || result.status === 'ok')
           })
         }}
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
@@ -23,8 +23,8 @@ export function Cta({ label }: { label: string }) {
         {label}
       </button>
       <p className="max-w-md text-sm text-muted-foreground">
-        {tried
-          ? 'Pendiente: el clic llegó, pero no queda anotada ninguna conversión.'
+        {done
+          ? 'Conversión registrada (una por visitante).'
           : 'La conversión se anota solo acá. Cargar la página no cuenta.'}
       </p>
     </div>

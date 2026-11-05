@@ -71,14 +71,32 @@ export function emptyLog(): ExperimentLog {
   }
 }
 
-export function assignVariant(_visitorId: string): Variant {
-  // TODO: hash estable. El mismo id tiene que devolver siempre la misma variante.
-  return 'a'
+/**
+ * Hash estable (FNV-1a 32 bits) para asignar variante de forma determinista.
+ * El mismo visitorId siempre produce la misma variante.
+ * Paridad: bit menos significativo 0 -> 'a' (control), 1 -> 'b' (tratamiento).
+ * Resultado documentado: assignVariant('lab-visitor-demo-01') === 'b'.
+ */
+export function stableHash(visitorId: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < visitorId.length; i++) {
+    hash ^= visitorId.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
 }
 
-export function conversionRate(_stats: VariantStats): number | null {
-  // TODO: conversiones / impresiones. Sin impresiones, devolver null, no 0.
-  return null
+export function assignVariant(visitorId: string): Variant {
+  return stableHash(visitorId) % 2 === 0 ? 'a' : 'b'
+}
+
+export function conversionRate(stats: VariantStats): number | null {
+  if (typeof stats !== 'object' || stats === null) return null
+  const { impressions, conversions } = stats
+  if (!Number.isFinite(impressions) || !Number.isFinite(conversions)) return null
+  if (impressions === 0) return null
+  if (impressions < 0 || conversions < 0) return null
+  return conversions / impressions
 }
 
 export function rateGap(log: ExperimentLog): number | null {
@@ -88,9 +106,40 @@ export function rateGap(log: ExperimentLog): number | null {
   return (treatment - control) * 100
 }
 
-export function parseLog(_raw: string | undefined): ExperimentLog {
-  // TODO: validar el JSON antes de usarlo. Si falla, log vacío.
-  return emptyLog()
+function isValidStats(value: unknown): value is VariantStats {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  const { impressions, conversions } = record
+  return (
+    typeof impressions === 'number' &&
+    Number.isFinite(impressions) &&
+    Number.isInteger(impressions) &&
+    impressions >= 0 &&
+    typeof conversions === 'number' &&
+    Number.isFinite(conversions) &&
+    Number.isInteger(conversions) &&
+    conversions >= 0
+  )
+}
+
+export function parseLog(raw: string | undefined): ExperimentLog {
+  if (typeof raw !== 'string' || raw.length === 0) return emptyLog()
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return emptyLog()
+    const record = parsed as Record<string, unknown>
+    if (!isVariant(record.a as string) || !isVariant(record.b as string)) {
+      // No es la validación de variante: acá validamos la estructura del log.
+      // Se acepta solo si ambas claves son objetos con contadores válidos.
+    }
+    if (!isValidStats(record.a) || !isValidStats(record.b)) return emptyLog()
+    return {
+      a: { impressions: record.a.impressions, conversions: record.a.conversions },
+      b: { impressions: record.b.impressions, conversions: record.b.conversions },
+    }
+  } catch {
+    return emptyLog()
+  }
 }
 
 export function serializeLog(log: ExperimentLog): string {
@@ -105,16 +154,17 @@ const numberFormat = new Intl.NumberFormat('es-AR', {
 const integerFormat = new Intl.NumberFormat('es-AR')
 
 export function formatCount(value: number): string {
-  return integerFormat.format(value)
+  if (!Number.isFinite(value) || value < 0) return '0'
+  return integerFormat.format(Math.trunc(value))
 }
 
 export function formatRate(rate: number | null): string {
-  if (rate === null) return 'Pendiente'
+  if (rate === null || !Number.isFinite(rate)) return 'Pendiente'
   return `${numberFormat.format(rate * 100)}%`
 }
 
 export function formatPoints(value: number | null): string {
-  if (value === null) return 'Pendiente'
+  if (value === null || !Number.isFinite(value)) return 'Pendiente'
   return `${numberFormat.format(value)} pp`
 }
 
